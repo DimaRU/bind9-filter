@@ -91,6 +91,7 @@ typedef struct filter_instance {
 	filter_a_t v6_a;
 	dns_acl_t *a_acl;
 	dns_nametree_t  *filtered_domains;
+	dns_nametree_t  *filtered_domains_exact;
 } filter_instance_t;
 
 /*
@@ -204,6 +205,7 @@ static cfg_clausedef_t param_clauses[] = {
 	{ "filter-a-on-v6", &cfg_type_filter_a, 0 },
 	{ "filter-a-on-v4", &cfg_type_filter_a, 0 },
     { "only-for-domains", &cfg_type_namelist, 0 },
+    { "only-for-domains_exact", &cfg_type_namelist, 0 },
 };
 
 static cfg_clausedef_t *param_clausesets[] = { param_clauses, NULL };
@@ -370,6 +372,12 @@ parse_parameters(filter_instance_t *inst, const char *parameters,
 							  lctx,
 							  &inst->filtered_domains));
 
+	CHECK(configure_nametable(param_obj, 
+							  "only-for-domains_exact",
+							  mctx,
+							  lctx,
+							  &inst->filtered_domains_exact));
+
 cleanup:
 	if (param_obj != NULL) {
 		cfg_obj_destroy(parser, &param_obj);
@@ -479,6 +487,10 @@ plugin_destroy(void **instp) {
 
 	if (inst->filtered_domains != NULL) {
 		dns_nametree_detach(&inst->filtered_domains);
+	}
+
+	if (inst->filtered_domains_exact != NULL) {
+		dns_nametree_detach(&inst->filtered_domains_exact);
 	}
 
 	isc_mem_putanddetach(&inst->mctx, inst, sizeof(*inst));
@@ -783,22 +795,30 @@ filter_respond_begin(void *arg, void *cbdata, isc_result_t *resp) {
 		return (NS_HOOK_CONTINUE);
 	}
 
-	// +++ telcontar: check if the qname is covered by the filtered_domains and return if not
-	if (inst->filtered_domains != NULL) {
+	// +++ telcontar: check if the qname is covered by the filtered_domains or filtered_domains_exact and return if not
+	if (inst->filtered_domains != NULL || inst->filtered_domains_exact != NULL) {
 		dns_name_t *qname = qctx->client->query.qname;
 		dns_fixedname_t fixed;
 		dns_name_t *found = dns_fixedname_initname(&fixed);
-		char buf[DNS_NAME_FORMATSIZE];
-		if (!dns_nametree_covered(inst->filtered_domains, qname, found, 0))
+		dns_ntnode_t *node = NULL;
+		if (inst->filtered_domains != NULL && dns_nametree_covered(inst->filtered_domains, qname, found, 0))
 		{
-			return (NS_HOOK_CONTINUE);
-		} else {
+			char buf[DNS_NAME_FORMATSIZE];
 			dns_name_format(found, buf, sizeof(buf));
 			ns_client_log(qctx->client,
 						NS_LOGCATEGORY_QUERIES,
 						NS_LOGMODULE_HOOKS,
 						ISC_LOG_INFO,
-						"Filter pattern: %s", buf);
+						"filter A by pattern: %s", buf);
+		} else if (inst->filtered_domains_exact != NULL && dns_nametree_find(inst->filtered_domains_exact, qname, &node) == ISC_R_SUCCESS) {
+			dns_ntnode_detach(&node);
+			ns_client_log(qctx->client,
+						NS_LOGCATEGORY_QUERIES,
+						NS_LOGMODULE_HOOKS,
+						ISC_LOG_INFO,
+						"filter A by exact pattern");
+		} else {
+			return (NS_HOOK_CONTINUE);
 		}
 	}
 
