@@ -1,0 +1,23 @@
+.vscode/
+config.h
+
+# Common
+*.d
+*.o
+# Precompiled Headers
+*.gch
+*.pch
+# Libraries
+*.lib
+*.a
+*.la
+*.lo
+
+# Shared objects
+*.so
+
+# Debug files
+*.dSYM/
+*.su
+*.idb
+*.pdb
