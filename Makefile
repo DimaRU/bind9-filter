@@ -33,6 +33,6 @@ fclean:	clean
 re:		fclean all
 install: all
 		sudo cp ${NAME} /usr/lib/x86_64-linux-gnu/bind
-test: install
+run: install
 		sudo systemctl restart named
 .PHONY : clean all fclean re
